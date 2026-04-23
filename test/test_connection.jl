@@ -91,4 +91,34 @@
         e = LanceDBException(Int32(4), "table not found")
         @test sprint(showerror, e) == "LanceDBException(4): table not found"
     end
+
+    # ── 9. execute failure: builder consumed on the error path (bug #2) ───────
+    # Block the target path by placing a regular file there. LanceDB will attempt
+    # to create/open it as a directory and fail, so lancedb_connect_builder_execute
+    # returns NULL and the builder is consumed by Rust's Box::from_raw drop.
+    #
+    # NOTE: the Rust implementation drops the builder in BOTH the Ok and Err
+    # branches (Box::from_raw takes ownership unconditionally). The C header says
+    # "On success, the builder is consumed", which is understated — it is always
+    # consumed. Any "fix" that calls lancedb_connect_builder_free on the failure
+    # path would therefore be a double-free. This test verifies that:
+    #   a) the failure produces LanceDBException, not a silent return or crash,
+    #   b) the process is not corrupted afterwards (a new valid Connection works).
+    @testset "execute failure throws LanceDBException, process stays healthy" begin
+        # Mirror the technique from lancedb-c/tests/test_connection.cpp:
+        # create a regular FILE at the parent path so that any attempt to create
+        # a sub-directory inside it fails at the OS level (ENOTDIR).
+        blocker = joinpath(tmp, "parent-is-a-file")
+        write(blocker, "")                         # regular file, not a directory
+        db_path = joinpath(blocker, "lance_db")    # URI: <file>/lance_db — impossible path
+
+        @test_throws LanceDBException Connection(db_path)
+
+        # If the builder were double-freed or memory were corrupted, this next
+        # Connection call would likely crash or produce garbage.
+        conn = Connection(joinpath(tmp, "post-failure"))
+        @test conn isa Connection
+        @test isempty(table_names(conn))
+        close(conn)
+    end
 end

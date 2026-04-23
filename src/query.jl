@@ -171,11 +171,11 @@ mutable struct VectorQuery
         end
         check_ptr(handle, "lancedb_vector_query_new returned NULL")
         vq = new(handle, false)
+        finalizer(vq -> vq._consumed || lancedb_vector_query_free(vq.handle), vq)
         if !isnothing(column)
             errmsg = Ref{Ptr{UInt8}}(C_NULL)
             check(lancedb_vector_query_column(vq.handle, column, errmsg), errmsg)
         end
-        finalizer(vq -> vq._consumed || lancedb_vector_query_free(vq.handle), vq)
         vq
     end
 end
