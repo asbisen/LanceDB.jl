@@ -12,4 +12,5 @@ using Tables
     include("test_vector_search_execute.jl")
     include("test_index.jl")
     include("test_expr_filter.jl")
+    include("test_integration.jl")
 end

@@ -78,9 +78,7 @@ function merge_insert(tbl::Table,
                       reader::Ptr{LanceDBRecordBatchReaderHandle},
                       on_columns::Vector{String};
                       config::LanceDBMergeInsertConfig=LanceDBMergeInsertConfig())
-    # Build null-terminated array of C strings
-    ptrs = [pointer(c) for c in on_columns]  # Vector of Ptr{UInt8}
-    # Keep the column name bytes alive for the duration of the call
+    ptrs = [pointer(c) for c in on_columns]
     GC.@preserve on_columns begin
         col_ptrs = Ptr{Ptr{UInt8}}(pointer(ptrs))
         errmsg   = Ref{Ptr{UInt8}}(C_NULL)
@@ -90,6 +88,33 @@ function merge_insert(tbl::Table,
         check(code, errmsg)
     end
 end
+
+"""
+    merge_insert(tbl, data, on_columns; config=LanceDBMergeInsertConfig())
+
+Upsert rows from any Tables.jl-compatible source, keyed on `on_columns`.
+Matched rows are updated; unmatched rows are inserted.
+"""
+function merge_insert(tbl::Table, data, on_columns::Vector{String};
+                      config::LanceDBMergeInsertConfig=LanceDBMergeInsertConfig())
+    Tables.istable(data) || throw(ArgumentError("data must satisfy the Tables.jl interface"))
+    reader, schema_ptr, arr_hdr, pins = _make_reader(data)
+    ptrs = [pointer(c) for c in on_columns]
+    GC.@preserve pins on_columns begin
+        col_ptrs = Ptr{Ptr{UInt8}}(pointer(ptrs))
+        errmsg   = Ref{Ptr{UInt8}}(C_NULL)
+        code     = lancedb_table_merge_insert(tbl.handle, reader, col_ptrs,
+                                               Csize_t(length(on_columns)),
+                                               Ref(config), errmsg)
+        _free_array_tree(arr_hdr)
+        release_arrow_schema(schema_ptr)
+        check(code, errmsg)
+    end
+    nothing
+end
+
+merge_insert(tbl::Table, data, on_column::String; kwargs...) =
+    merge_insert(tbl, data, [on_column]; kwargs...)
 
 """
     optimize(tbl; type=OptimizeAll)
