@@ -80,12 +80,14 @@ Set a DataFusion `LanceDBExpr` filter. The expr handle is consumed.
 """
 function filter_expr(q::Query, expr::LanceDBExpr)::Query
     _assert_live(q)
-    expr._consumed && throw(LanceDBException(Int32(LANCEDB_RUNTIME), "Expr already consumed"))
+    expr._consumed && throw(LanceDBException(Int32(LANCEDB_RUNTIME), "LanceDBExpr already consumed"))
     errmsg = Ref{Ptr{UInt8}}(C_NULL)
     check(lancedb_query_df_filter(q.handle, expr.handle, errmsg), errmsg)
     expr._consumed = true
     q
 end
+
+filter_expr(expr::LanceDBExpr) = q -> filter_expr(q, expr)
 
 """
     execute(q) -> QueryResult
@@ -188,6 +190,15 @@ function filter_where(vq::VectorQuery, predicate::AbstractString)::VectorQuery
     _assert_live(vq)
     errmsg = Ref{Ptr{UInt8}}(C_NULL)
     check(lancedb_vector_query_where_filter(vq.handle, predicate, errmsg), errmsg)
+    vq
+end
+
+function filter_expr(vq::VectorQuery, expr::LanceDBExpr)::VectorQuery
+    _assert_live(vq)
+    expr._consumed && throw(LanceDBException(Int32(LANCEDB_RUNTIME), "LanceDBExpr already consumed"))
+    errmsg = Ref{Ptr{UInt8}}(C_NULL)
+    check(lancedb_vector_query_df_filter(vq.handle, expr.handle, errmsg), errmsg)
+    expr._consumed = true
     vq
 end
 

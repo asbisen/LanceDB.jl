@@ -475,6 +475,15 @@ function lancedb_expr_or(left::Ptr{LanceDBExprHandle}, right::Ptr{LanceDBExprHan
           left, right)
 end
 
+function lancedb_expr_in_list(expr::Ptr{LanceDBExprHandle},
+                               list::Ptr{Ptr{LanceDBExprHandle}}, list_len::Csize_t,
+                               negated::Bool, errmsg::Ref{Ptr{UInt8}})
+    ccall((:lancedb_expr_in_list, liblancedb),
+          Ptr{LanceDBExprHandle},
+          (Ptr{LanceDBExprHandle}, Ptr{Ptr{LanceDBExprHandle}}, Csize_t, Bool, Ref{Ptr{UInt8}}),
+          expr, list, list_len, negated, errmsg)
+end
+
 function lancedb_expr_clone(expr::Ptr{LanceDBExprHandle})
     ccall((:lancedb_expr_clone, liblancedb),
           Ptr{LanceDBExprHandle}, (Ptr{LanceDBExprHandle},), expr)

@@ -66,7 +66,7 @@ export filter_where, filter_expr, select_cols, limit, offset
 export distance_type, nprobes, refine_factor, ef
 
 # Expression DSL
-export col, lit, isnull, isnotnull
+export col, lit, isnull, isnotnull, isin, notiin
 
 # Index management
 export create_vector_index, create_scalar_index, create_fts_index

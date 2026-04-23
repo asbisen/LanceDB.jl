@@ -63,3 +63,41 @@ Base.:-(a::LanceDBExpr, b::LanceDBExpr)    = _binary(a, OpMinus, b)
 Base.:*(a::LanceDBExpr, b::LanceDBExpr)    = _binary(a, OpMultiply, b)
 Base.:/(a::LanceDBExpr, b::LanceDBExpr)    = _binary(a, OpDivide, b)
 Base.:%(a::LanceDBExpr, b::LanceDBExpr)    = _binary(a, OpModulo, b)
+
+# ── In-list operators ─────────────────────────────────────────────────────────
+
+"""
+    isin(expr, values...) -> LanceDBExpr
+
+Build an IN-list predicate. `expr` and all `values` are consumed.
+
+    isin(col("label"), lit("cat"), lit("dog"))
+"""
+function isin(expr::LanceDBExpr, values::LanceDBExpr...)::LanceDBExpr
+    isempty(values) && throw(ArgumentError("isin requires at least one value"))
+    handles = [_consume(v) for v in values]
+    list    = Ptr{Ptr{LanceDBExprHandle}}(pointer(handles))
+    errmsg  = Ref{Ptr{UInt8}}(C_NULL)
+    GC.@preserve handles begin
+        result = lancedb_expr_in_list(_consume(expr), list, Csize_t(length(handles)), false, errmsg)
+    end
+    check_ptr(result, "lancedb_expr_in_list returned NULL")
+    LanceDBExpr(result)
+end
+
+"""
+    notiin(expr, values...) -> LanceDBExpr
+
+Build a NOT IN-list predicate. `expr` and all `values` are consumed.
+"""
+function notiin(expr::LanceDBExpr, values::LanceDBExpr...)::LanceDBExpr
+    isempty(values) && throw(ArgumentError("notiin requires at least one value"))
+    handles = [_consume(v) for v in values]
+    list    = Ptr{Ptr{LanceDBExprHandle}}(pointer(handles))
+    errmsg  = Ref{Ptr{UInt8}}(C_NULL)
+    GC.@preserve handles begin
+        result = lancedb_expr_in_list(_consume(expr), list, Csize_t(length(handles)), true, errmsg)
+    end
+    check_ptr(result, "lancedb_expr_in_list returned NULL")
+    LanceDBExpr(result)
+end
