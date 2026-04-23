@@ -79,8 +79,17 @@ function _fmt_to_type(fmt::String)
     error("Unsupported Arrow format for result import: $fmt")
 end
 
+# Test bit `bit_idx` (0-indexed) of an Arrow validity bitmap.
+# Returns true if the slot is valid (non-null).
+function _is_valid(validity_ptr::Ptr{UInt8}, bit_idx::Int)::Bool
+    byte = unsafe_load(validity_ptr, (bit_idx >> 3) + 1)   # 1-indexed byte
+    (byte >> (bit_idx & 7)) & 0x01 == 0x01
+end
+
 # Read one column from an ArrowArray given its Arrow format string.
 # All column data is copied into fresh Julia vectors.
+# Returns Vector{T} when null_count == 0, or Vector{Union{T,Missing}} when the
+# validity bitmap indicates at least one null slot.
 #
 # NOTE: Julia Ptr{T} + n advances by n *bytes*, not n elements.
 # Use unsafe_load(ptr, i) for element-indexed access (1-indexed, sizeof(T)-aware).
@@ -89,15 +98,31 @@ function _read_column(arr::ArrowArray, fmt::String)
     offset = Int(arr.offset)
     bufs   = Ptr{Ptr{Cvoid}}(arr.buffers)
 
+    validity_ptr = Ptr{UInt8}(unsafe_load(bufs, 1))
+    # null_count == 0 means definitively no nulls; a NULL validity pointer also means all valid.
+    has_nulls = arr.null_count != 0 && validity_ptr != Ptr{UInt8}(C_NULL)
+
     if fmt == "u"   # UTF-8 string: buffers = [validity, Int32-offsets, bytes]
         off_ptr  = Ptr{Int32}(unsafe_load(bufs, 2))
         byte_ptr = Ptr{UInt8}(unsafe_load(bufs, 3))
-        result   = Vector{String}(undef, n)
-        for i in 1:n
-            # unsafe_load(ptr, i) is 1-indexed and sizeof-aware
-            start_b = Int(unsafe_load(off_ptr, i + offset))
-            end_b   = Int(unsafe_load(off_ptr, i + offset + 1))
-            result[i] = unsafe_string(byte_ptr + start_b, end_b - start_b)
+        if has_nulls
+            result = Vector{Union{String, Missing}}(undef, n)
+            for i in 1:n
+                if _is_valid(validity_ptr, offset + i - 1)
+                    start_b    = Int(unsafe_load(off_ptr, i + offset))
+                    end_b      = Int(unsafe_load(off_ptr, i + offset + 1))
+                    result[i]  = unsafe_string(byte_ptr + start_b, end_b - start_b)
+                else
+                    result[i] = missing
+                end
+            end
+        else
+            result = Vector{String}(undef, n)
+            for i in 1:n
+                start_b    = Int(unsafe_load(off_ptr, i + offset))
+                end_b      = Int(unsafe_load(off_ptr, i + offset + 1))
+                result[i]  = unsafe_string(byte_ptr + start_b, end_b - start_b)
+            end
         end
         return result
 
@@ -108,23 +133,47 @@ function _read_column(arr::ArrowArray, fmt::String)
         c_offset = Int(child.offset)
         c_bufs   = Ptr{Ptr{Cvoid}}(child.buffers)
         data_ptr = Ptr{Float32}(unsafe_load(c_bufs, 2))
-        result   = Vector{Vector{Float32}}(undef, n)
-        for i in 1:n
-            vec    = Vector{Float32}(undef, dim)
-            estart = c_offset + (offset + i - 1) * dim + 1   # 1-indexed start for unsafe_load
-            for j in 1:dim
-                vec[j] = unsafe_load(data_ptr, estart + j - 1)
+        if has_nulls
+            result = Vector{Union{Vector{Float32}, Missing}}(undef, n)
+            for i in 1:n
+                if _is_valid(validity_ptr, offset + i - 1)
+                    vec    = Vector{Float32}(undef, dim)
+                    estart = c_offset + (offset + i - 1) * dim + 1
+                    for j in 1:dim
+                        vec[j] = unsafe_load(data_ptr, estart + j - 1)
+                    end
+                    result[i] = vec
+                else
+                    result[i] = missing
+                end
             end
-            result[i] = vec
+        else
+            result = Vector{Vector{Float32}}(undef, n)
+            for i in 1:n
+                vec    = Vector{Float32}(undef, dim)
+                estart = c_offset + (offset + i - 1) * dim + 1   # 1-indexed start for unsafe_load
+                for j in 1:dim
+                    vec[j] = unsafe_load(data_ptr, estart + j - 1)
+                end
+                result[i] = vec
+            end
         end
         return result
 
     else   # primitive numeric: buffers = [validity, data]
         T        = _fmt_to_type(fmt)
         data_ptr = Ptr{T}(unsafe_load(bufs, 2))
-        result   = Vector{T}(undef, n)
-        for i in 1:n
-            result[i] = unsafe_load(data_ptr, i + offset)   # 1-indexed, sizeof-aware
+        if has_nulls
+            result = Vector{Union{T, Missing}}(undef, n)
+            for i in 1:n
+                result[i] = _is_valid(validity_ptr, offset + i - 1) ?
+                    unsafe_load(data_ptr, i + offset) : missing
+            end
+        else
+            result = Vector{T}(undef, n)
+            for i in 1:n
+                result[i] = unsafe_load(data_ptr, i + offset)   # 1-indexed, sizeof-aware
+            end
         end
         return result
     end

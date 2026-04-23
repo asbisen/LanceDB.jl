@@ -175,6 +175,10 @@ function _to_arrow_c_abi(data)
         if T <: AbstractVector   # FixedSizeList<Float32>
             ET = eltype(T)
             ET === Float32 || error("FixedSizeList columns must have Float32 elements, got $ET")
+            isempty(col) && throw(ArgumentError(
+                "cannot infer embedding dimension from zero-row FixedSizeList column \"$sname\"; " *
+                "use make_vector_schema + create_table(conn, name, schema::Ptr{ArrowSchema}) " *
+                "to define an empty table with a vector column"))
             dim  = length(first(col))
             flat = Vector{Float32}(undef, n_rows * dim)
             for (i, v) in enumerate(col)
