@@ -10,7 +10,7 @@ A pure Julia wrapper for [LanceDB](https://lancedb.com/) built on top of the off
 
 ## Getting started
 
-See **[LanceDB.jl/QUICKSTART.md](LanceDB.jl/QUICKSTART.md)** for a step-by-step walkthrough you can follow from the Julia REPL by copy-pasting each block in sequence.
+See **[QUICKSTART.md](https://github.com/asbisen/LanceDB.jl/blob/main/QUICKSTART.md)** for a step-by-step walkthrough you can follow from the Julia REPL by copy-pasting each block in sequence.
 
 ---
 
