@@ -1,6 +1,7 @@
 name = "LanceDB"
 uuid = "c3db7a4d-9e0c-4c59-8dab-2a3e2b394f5e"
 version = "0.1.0"
+authors = ["Anand Bisen <asbisen@icloud.com>"]
 
 [deps]
 Arrow = "69666777-d1a9-59fb-9406-91d4454c9d45"
