@@ -236,6 +236,12 @@ function _make_reader(data)
         code = lancedb_record_batch_reader_from_arrow(
             Ptr{Cvoid}(arr_ptr), Ptr{Cvoid}(schema_ptr), reader_out, errmsg)
     end
-    check(code, errmsg)
+    try
+        check(code, errmsg)
+    catch
+        _free_array_tree(arr_ptr)
+        release_arrow_schema(schema_ptr)
+        rethrow()
+    end
     reader_out[], schema_ptr, arr_ptr, pins
 end

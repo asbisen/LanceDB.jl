@@ -9,6 +9,7 @@ using Tables
     include("test_vector_search.jl")
     include("test_table_add.jl")
     include("test_null_columns.jl")
+    include("test_make_reader_leak.jl")
     include("test_query_execute.jl")
     include("test_vector_search_execute.jl")
     include("test_index.jl")
