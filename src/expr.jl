@@ -29,19 +29,74 @@ end
 
 # ── Constructors ──────────────────────────────────────────────────────────────
 
+"""
+    col(name) -> LanceDBExpr
+
+Create a column reference expression. Use this as the left-hand side of
+comparisons in the expression DSL:
+
+```julia
+col("year") > lit(2020)
+```
+"""
 col(name::AbstractString)::LanceDBExpr    = LanceDBExpr(lancedb_expr_column(name))
+
+"""
+    lit(v) -> LanceDBExpr
+
+Wrap a Julia scalar as a literal expression. Supported types: `AbstractString`,
+`Integer` (stored as Int64), `AbstractFloat` (stored as Float64), `Bool`.
+
+```julia
+lit("Dune")      # string literal
+lit(2021)        # integer literal
+lit(7.5f0)       # float literal (promoted to Float64)
+```
+"""
 lit(v::AbstractString)::LanceDBExpr       = LanceDBExpr(lancedb_expr_literal_string(v))
 lit(v::Integer)::LanceDBExpr              = LanceDBExpr(lancedb_expr_literal_i64(Int64(v)))
 lit(v::AbstractFloat)::LanceDBExpr        = LanceDBExpr(lancedb_expr_literal_f64(Float64(v)))
 lit(v::Bool)::LanceDBExpr                 = LanceDBExpr(lancedb_expr_literal_bool(v))
 
-# Clone an expression so it can be reused in multiple positions
+"""
+    copy(e::LanceDBExpr) -> LanceDBExpr
+
+Clone an expression so it can be used in more than one filter position.
+Each `LanceDBExpr` is consumed on first use; `copy` produces an independent
+handle that can be passed to a second filter without error.
+
+```julia
+base = col("year") > lit(2015)
+e1   = copy(base) & (col("rating") > lit(7.8f0))
+e2   = copy(base) & (col("rating") < lit(7.0f0))
+```
+"""
 Base.copy(e::LanceDBExpr)::LanceDBExpr    = LanceDBExpr(lancedb_expr_clone(e.handle))
 
 # ── Unary operators ───────────────────────────────────────────────────────────
 
 Base.:!(e::LanceDBExpr)::LanceDBExpr      = LanceDBExpr(lancedb_expr_not(_consume(e)))
+
+"""
+    isnull(e::LanceDBExpr) -> LanceDBExpr
+
+Build an `IS NULL` predicate. `e` is consumed.
+
+```julia
+filter_expr(col("title") |> isnull)     # rows where title IS NULL
+```
+"""
 isnull(e::LanceDBExpr)::LanceDBExpr       = LanceDBExpr(lancedb_expr_is_null(_consume(e)))
+
+"""
+    isnotnull(e::LanceDBExpr) -> LanceDBExpr
+
+Build an `IS NOT NULL` predicate. `e` is consumed.
+
+```julia
+query(tbl) |> filter_expr(isnotnull(col("title"))) |> execute
+```
+"""
 isnotnull(e::LanceDBExpr)::LanceDBExpr    = LanceDBExpr(lancedb_expr_is_not_null(_consume(e)))
 
 # ── Binary operators ──────────────────────────────────────────────────────────

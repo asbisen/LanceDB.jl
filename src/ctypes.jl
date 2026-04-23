@@ -40,6 +40,16 @@ primitive type LanceDBRecordBatchReaderHandle 64 end
     LANCEDB_UNKNOWN                    = 21
 end
 
+"""
+    DistanceType
+
+Distance metric used for vector search.
+
+- `L2`      — Euclidean (L2) distance (default)
+- `Cosine`  — cosine similarity (good for normalized embeddings)
+- `Dot`     — dot-product distance
+- `Hamming` — Hamming distance (binary vectors)
+"""
 @enum DistanceType::Int32 begin
     L2      = 0
     Cosine  = 1
@@ -47,6 +57,26 @@ end
     Hamming = 3
 end
 
+"""
+    IndexType
+
+Type of index to create.
+
+Vector index types (used with `create_vector_index`):
+- `Auto`      — let LanceDB choose (default)
+- `IVFFlat`   — inverted file with flat quantization (requires ≥256 rows)
+- `IVFPQ`     — inverted file with product quantization
+- `IVFHNSWpq` — IVF + HNSW + product quantization
+- `IVFHNSWsq` — IVF + HNSW + scalar quantization
+
+Scalar index types (used with `create_scalar_index`):
+- `BTree`     — B-tree index for range/equality queries (default)
+- `Bitmap`    — bitmap index for low-cardinality columns
+- `LabelList` — index for list-typed columns
+
+Full-text index (used with `create_fts_index`):
+- `FTS`       — full-text search index
+"""
 @enum IndexType::Int32 begin
     Auto      = 0
     BTree     = 1
@@ -59,6 +89,16 @@ end
     IVFHNSWsq = 8
 end
 
+"""
+    OptimizeType
+
+Controls which optimization pass `optimize` runs.
+
+- `OptimizeAll`     — run all optimizations (default)
+- `OptimizeCompact` — compact small files into larger ones
+- `OptimizePrune`   — delete files belonging to old versions
+- `OptimizeIndex`   — re-index rows added since the last index build
+"""
 @enum OptimizeType::Int32 begin
     OptimizeAll     = 0
     OptimizeCompact = 1
@@ -84,6 +124,27 @@ end
 
 # ── C value-type structs ───────────────────────────────────────────────────────
 
+"""
+    LanceDBVectorIndexConfig()
+
+Configuration for `create_vector_index`. Construct with the zero-argument
+constructor and mutate the fields you want to override before passing to
+`create_vector_index`.
+
+# Fields
+- `num_partitions`  — number of IVF partitions; default `-1` (auto, ≈ √n)
+- `num_sub_vectors` — number of PQ sub-vectors (PQ/HNSW variants); default `-1` (auto)
+- `max_iterations`  — k-means training iterations; default `-1` (auto)
+- `sample_rate`     — fraction of rows used for training; `0.0` means auto
+- `distance_type`   — `DistanceType` enum value, default `L2`
+- `replace`         — `1` to replace an existing index, `0` to error if one exists
+
+```julia
+cfg = LanceDBVectorIndexConfig()
+cfg.num_partitions = 16
+create_vector_index(tbl, "embedding"; type=IVFFlat, config=cfg)
+```
+"""
 mutable struct LanceDBVectorIndexConfig
     num_partitions::Cint
     num_sub_vectors::Cint
@@ -96,6 +157,15 @@ end
 
 LanceDBVectorIndexConfig() = LanceDBVectorIndexConfig(-1, -1, -1, 0.0f0, Int32(L2), C_NULL, 0)
 
+"""
+    LanceDBScalarIndexConfig()
+
+Configuration for `create_scalar_index`.
+
+# Fields
+- `replace`                  — `1` to replace an existing index
+- `force_update_statistics`  — `1` to recompute statistics even if up to date
+"""
 mutable struct LanceDBScalarIndexConfig
     replace::Cint
     force_update_statistics::Cint
@@ -103,6 +173,21 @@ end
 
 LanceDBScalarIndexConfig() = LanceDBScalarIndexConfig(0, 0)
 
+"""
+    LanceDBFtsIndexConfig()
+
+Configuration for `create_fts_index`.
+
+# Fields
+- `base_tokenizer`   — tokenizer name (C_NULL → `"simple"`)
+- `language`         — language for stemming/stop-words (C_NULL → `"English"`)
+- `max_tokens`       — maximum token length; `-1` means no limit
+- `lowercase`        — `1` to lowercase tokens before indexing (default)
+- `stem`             — `1` to apply stemming
+- `remove_stop_words`— `1` to drop common stop words
+- `ascii_folding`    — `1` to normalize accented characters to ASCII
+- `replace`          — `1` to replace an existing index
+"""
 mutable struct LanceDBFtsIndexConfig
     base_tokenizer::Ptr{UInt8}
     language::Ptr{UInt8}
@@ -116,6 +201,16 @@ end
 
 LanceDBFtsIndexConfig() = LanceDBFtsIndexConfig(C_NULL, C_NULL, -1, 1, 0, 0, 0, 0)
 
+"""
+    LanceDBMergeInsertConfig()
+
+Configuration for `merge_insert` (upsert). Both flags default to `1`,
+which is the standard upsert behaviour.
+
+# Fields
+- `when_matched_update_all`    — `1` to overwrite every column of a matching row
+- `when_not_matched_insert_all`— `1` to insert rows whose key is not found
+"""
 mutable struct LanceDBMergeInsertConfig
     when_matched_update_all::Cint
     when_not_matched_insert_all::Cint
@@ -123,6 +218,15 @@ end
 
 LanceDBMergeInsertConfig() = LanceDBMergeInsertConfig(1, 1)
 
+"""
+    LanceDBSessionOptions()
+
+Session-level cache configuration passed to `Connection`.
+
+# Fields
+- `index_cache_bytes`    — maximum bytes for the vector index cache; `0` uses the library default
+- `metadata_cache_bytes` — maximum bytes for the metadata cache; `0` uses the library default
+"""
 mutable struct LanceDBSessionOptions
     index_cache_bytes::Csize_t
     metadata_cache_bytes::Csize_t

@@ -36,7 +36,20 @@ mutable struct Connection
     end
 end
 
-# do-block form: Connection(uri) do conn ... end
+"""
+    open(Connection, uri; kwargs...) do conn ... end
+
+Do-block form of `Connection`. Guarantees `close(conn)` is called even if
+the block throws. Accepts the same keyword arguments as `Connection(uri; ...)`.
+
+```julia
+open(Connection, "/tmp/mydb") do conn
+    tbl = open_table(conn, "items")
+    println(count_rows(tbl))
+    close(tbl)
+end
+```
+"""
 function Base.open(f::Function, ::Type{Connection}, uri::AbstractString; kwargs...)
     conn = Connection(uri; kwargs...)
     try
@@ -46,6 +59,11 @@ function Base.open(f::Function, ::Type{Connection}, uri::AbstractString; kwargs.
     end
 end
 
+"""
+    close(conn::Connection)
+
+Release the native connection handle immediately. Safe to call more than once.
+"""
 function Base.close(conn::Connection)
     conn.handle == C_NULL && return
     lancedb_connection_free(conn.handle)

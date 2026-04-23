@@ -25,8 +25,30 @@ function _assert_live(q::Query)
     q._consumed && throw(LanceDBException(Int32(LANCEDB_RUNTIME), "Query already executed"))
 end
 
+"""
+    query(tbl) -> Query
+
+Start a full-table scan on `tbl`. Chain builder methods before calling
+`execute` to materialise results:
+
+```julia
+result = query(tbl) |> filter_where("year > 2020") |> limit(100) |> execute
+cols   = Tables.columns(result)
+```
+"""
 query(tbl::Table) = Query(tbl)
 
+"""
+    limit(q, n) -> Query
+    limit(n)    -> Function
+
+Cap the number of rows returned. The single-argument form returns a curried
+function suitable for use with `|>`:
+
+```julia
+query(tbl) |> limit(10) |> execute
+```
+"""
 function limit(q::Query, n::Integer)::Query
     _assert_live(q)
     errmsg = Ref{Ptr{UInt8}}(C_NULL)
@@ -36,6 +58,16 @@ end
 
 limit(n::Integer) = q -> limit(q, n)
 
+"""
+    offset(q, n) -> Query
+    offset(n)    -> Function
+
+Skip the first `n` rows. Combine with `limit` for pagination:
+
+```julia
+query(tbl) |> offset(20) |> limit(10) |> execute
+```
+"""
 function offset(q::Query, n::Integer)::Query
     _assert_live(q)
     errmsg = Ref{Ptr{UInt8}}(C_NULL)
@@ -45,6 +77,18 @@ end
 
 offset(n::Integer) = q -> offset(q, n)
 
+"""
+    select_cols(q, cols) -> Query
+    select_cols(cols)    -> Function
+
+Restrict the returned columns to `cols` (a `Vector{String}`). Columns not
+listed are omitted from the `QueryResult`. The single-argument form is
+curried for use with `|>`:
+
+```julia
+query(tbl) |> select_cols(["id", "title"]) |> execute
+```
+"""
 function select_cols(q::Query, cols::Vector{String})::Query
     _assert_live(q)
     ptrs   = [pointer(c) for c in cols]
@@ -140,9 +184,35 @@ function _assert_live(vq::VectorQuery)
     vq._consumed && throw(LanceDBException(Int32(LANCEDB_RUNTIME), "VectorQuery already executed"))
 end
 
+"""
+    vector_search(tbl, vec, column) -> VectorQuery
+    vector_search(tbl, vec)         -> VectorQuery
+
+Start an approximate nearest-neighbour (ANN) search for rows whose
+`column` embedding is closest to `vec`. Chain builder methods before
+calling `execute`:
+
+```julia
+cols = Tables.columns(
+    vector_search(tbl, Float32[0.1, 0.8, 0.3], "embedding") |>
+    distance_type(Cosine) |>
+    limit(5) |>
+    execute
+)
+println(cols[:_distance])   # ascending L2/cosine distances
+```
+
+The result always includes a `_distance` column with the computed distances.
+"""
 vector_search(tbl::Table, vec::Vector{Float32}, col::String)  = VectorQuery(tbl, vec, col)
 vector_search(tbl::Table, vec::Vector{Float32})               = VectorQuery(tbl, vec)
 
+"""
+    limit(vq::VectorQuery, n) -> VectorQuery
+
+Return at most `n` nearest neighbours. The single-argument curried form
+also works: `vector_search(tbl, vec, "col") |> limit(10) |> execute`.
+"""
 function limit(vq::VectorQuery, n::Integer)::VectorQuery
     _assert_live(vq)
     errmsg = Ref{Ptr{UInt8}}(C_NULL)
@@ -150,6 +220,13 @@ function limit(vq::VectorQuery, n::Integer)::VectorQuery
     vq
 end
 
+"""
+    distance_type(vq, dt::DistanceType) -> VectorQuery
+    distance_type(dt::DistanceType)     -> Function
+
+Set the distance metric for the search. Defaults to `L2`. Available values:
+`L2`, `Cosine`, `Dot`, `Hamming`. The single-argument form is curried for `|>`.
+"""
 function distance_type(vq::VectorQuery, dt::DistanceType)::VectorQuery
     _assert_live(vq)
     errmsg = Ref{Ptr{UInt8}}(C_NULL)
@@ -159,6 +236,15 @@ end
 
 distance_type(dt::DistanceType) = vq -> distance_type(vq, dt)
 
+"""
+    nprobes(vq, n) -> VectorQuery
+    nprobes(n)     -> Function
+
+Set the number of IVF partitions probed during an indexed ANN search.
+Higher values improve recall at the cost of speed. Only effective when an
+IVF-based vector index exists; ignored for flat (un-indexed) search.
+The single-argument form is curried for `|>`.
+"""
 function nprobes(vq::VectorQuery, n::Integer)::VectorQuery
     _assert_live(vq)
     errmsg = Ref{Ptr{UInt8}}(C_NULL)
@@ -168,6 +254,15 @@ end
 
 nprobes(n::Integer) = vq -> nprobes(vq, n)
 
+"""
+    refine_factor(vq, k) -> VectorQuery
+    refine_factor(k)     -> Function
+
+After the ANN search returns candidates, fetch `k × limit` raw rows and
+re-rank them by exact distance. Increases accuracy at the cost of extra
+I/O. A value of `1` (the default) disables re-ranking. The single-argument
+form is curried for `|>`.
+"""
 function refine_factor(vq::VectorQuery, k::Integer)::VectorQuery
     _assert_live(vq)
     errmsg = Ref{Ptr{UInt8}}(C_NULL)
@@ -177,6 +272,14 @@ end
 
 refine_factor(k::Integer) = vq -> refine_factor(vq, k)
 
+"""
+    ef(vq, n) -> VectorQuery
+    ef(n)     -> Function
+
+Set the HNSW `ef` (size of the dynamic candidate list during search).
+Higher values improve recall; lower values are faster. Only relevant when
+an HNSW-based index is in use. The single-argument form is curried for `|>`.
+"""
 function ef(vq::VectorQuery, n::Integer)::VectorQuery
     _assert_live(vq)
     errmsg = Ref{Ptr{UInt8}}(C_NULL)
@@ -186,6 +289,12 @@ end
 
 ef(n::Integer) = vq -> ef(vq, n)
 
+"""
+    filter_where(vq::VectorQuery, predicate) -> VectorQuery
+
+Apply a SQL WHERE predicate to the vector search results. Only rows
+matching `predicate` are returned even if they would rank in the top-k.
+"""
 function filter_where(vq::VectorQuery, predicate::AbstractString)::VectorQuery
     _assert_live(vq)
     errmsg = Ref{Ptr{UInt8}}(C_NULL)
@@ -193,6 +302,13 @@ function filter_where(vq::VectorQuery, predicate::AbstractString)::VectorQuery
     vq
 end
 
+"""
+    filter_expr(vq::VectorQuery, expr::LanceDBExpr) -> VectorQuery
+
+Apply a DataFusion `LanceDBExpr` filter to the vector search results.
+The expression handle is consumed. See also the curried form from `Query`:
+`filter_expr(expr)` works with `|>` on both `Query` and `VectorQuery`.
+"""
 function filter_expr(vq::VectorQuery, expr::LanceDBExpr)::VectorQuery
     _assert_live(vq)
     expr._consumed && throw(LanceDBException(Int32(LANCEDB_RUNTIME), "LanceDBExpr already consumed"))
@@ -202,6 +318,13 @@ function filter_expr(vq::VectorQuery, expr::LanceDBExpr)::VectorQuery
     vq
 end
 
+"""
+    select_cols(vq::VectorQuery, cols) -> VectorQuery
+
+Restrict the returned columns to `cols`. The `_distance` column is always
+included even if not listed. The curried `select_cols(cols)` form works
+with `|>` on both `Query` and `VectorQuery`.
+"""
 function select_cols(vq::VectorQuery, cols::Vector{String})::VectorQuery
     _assert_live(vq)
     ptrs   = [pointer(c) for c in cols]
@@ -213,6 +336,12 @@ function select_cols(vq::VectorQuery, cols::Vector{String})::VectorQuery
     vq
 end
 
+"""
+    execute(vq::VectorQuery) -> QueryResult
+
+Run the vector search and materialise the result. Consumes the query;
+calling `execute` again on the same object will throw `LanceDBException`.
+"""
 function execute(vq::VectorQuery)::QueryResult
     _assert_live(vq)
     result = lancedb_vector_query_execute(vq.handle)

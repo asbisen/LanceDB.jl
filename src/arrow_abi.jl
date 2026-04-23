@@ -10,6 +10,17 @@ import Base.Libc
 
 # ── Struct layouts ────────────────────────────────────────────────────────────
 
+"""
+    ArrowSchema
+
+Julia mirror of the Arrow C Data Interface `FFI_ArrowSchema` struct. You
+rarely need to construct one directly — use `make_schema` or
+`make_vector_schema` instead, and free with `release_arrow_schema`.
+
+Exported so that users can pass an `Ptr{ArrowSchema}` to the low-level
+`create_table(conn, name, schema::Ptr{ArrowSchema})` overload when they
+need full control over the schema.
+"""
 struct ArrowSchema
     format::Ptr{UInt8}        # const char* — Arrow format string
     name::Ptr{UInt8}          # const char* — field name (may be NULL)

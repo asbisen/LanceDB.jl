@@ -1,8 +1,20 @@
+"""
+    Table
+
+An open LanceDB table handle. Freed automatically by the GC via finalizer;
+call `close(tbl)` for deterministic cleanup.
+"""
 mutable struct Table
     handle::Ptr{LanceDBTableHandle}
     name::String
 end
 
+"""
+    close(tbl::Table)
+
+Release the native table handle immediately. Safe to call more than once.
+After closing, any further operations on `tbl` will error.
+"""
 function Base.close(tbl::Table)
     tbl.handle == C_NULL && return
     lancedb_table_free(tbl.handle)

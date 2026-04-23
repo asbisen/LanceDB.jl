@@ -1,3 +1,10 @@
+"""
+    LanceDBException(code, message)
+
+Thrown whenever a LanceDB C API call returns an error. `code` is the raw
+`LanceDBError` integer; `message` is the human-readable string returned by
+the C library (or a fallback when none is provided).
+"""
 struct LanceDBException <: Exception
     code::Int32
     message::String
