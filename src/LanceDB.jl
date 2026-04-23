@@ -62,7 +62,7 @@ export count_rows, table_version, delete_rows, add, merge_insert, optimize
 
 # Query building
 export query, vector_search, execute
-export filter_where, filter_expr, select_cols, offset
+export filter_where, filter_expr, select_cols, limit, offset
 export distance_type, nprobes, refine_factor, ef
 
 # Expression DSL
