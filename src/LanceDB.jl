@@ -38,7 +38,7 @@ include("index.jl")       # create_vector_index, create_scalar_index, etc.
 # ── Exports ───────────────────────────────────────────────────────────────────
 
 # Types
-export Connection, Table, Query, VectorQuery, QueryResult, LanceDBExpr
+export Connection, Table, TableSink, Query, VectorQuery, QueryResult, LanceDBExpr
 export LanceDBException
 
 # C config structs (users may need to construct these)

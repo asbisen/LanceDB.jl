@@ -129,6 +129,19 @@ merge_insert(tbl::Table, data, on_column::String; kwargs...) =
     merge_insert(tbl, data, [on_column]; kwargs...)
 
 """
+    Tables.materializer(tbl::Table)
+
+Returns a function that appends any Tables.jl-compatible source to `tbl` and
+returns `tbl`. Enables pipe syntax:
+
+```julia
+CSV.File("new_rows.csv") |> Tables.materializer(tbl)
+Arrow.Table(buf)         |> Tables.materializer(tbl)
+```
+"""
+Tables.materializer(tbl::Table) = data -> (add(tbl, data); tbl)
+
+"""
     optimize(tbl; type=OptimizeAll)
 
 Compact files and/or prune old versions.

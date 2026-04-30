@@ -106,7 +106,70 @@ println(table_version(tbl)) # version increments on every write
 
 ---
 
-## 4. Full-table scan
+## 4. Tables.jl sink protocol
+
+LanceDB.jl implements the Tables.jl sink interface, so any Tables.jl-compatible
+source can be piped directly into a table without materialising it into a
+DataFrame first.
+
+### Append rows to an existing table
+
+`Tables.materializer(tbl)` returns a function that calls `add` and returns
+the same `Table` object:
+
+```julia
+using Tables
+
+# Append a named tuple — same as add(tbl, data)
+(
+    id        = Int32[8, 9],
+    title     = ["Oppenheimer", "Poor Things"],
+    year      = Int32[2023, 2023],
+    rating    = Float32[8.3, 7.8],
+    embedding = [Float32[0.6, 0.4, 0.3, 0.1], Float32[0.2, 0.5, 0.7, 0.4]],
+) |> Tables.materializer(tbl)
+
+println(count_rows(tbl))   # previous count + 2
+```
+
+The materializer can be saved and called multiple times:
+
+```julia
+m = Tables.materializer(tbl)
+m((id = Int32[10], title = ["Dune: Part Two"], year = Int32[2024],
+   rating = Float32[8.5], embedding = [Float32[0.9, 0.1, 0.2, 0.0]]))
+```
+
+### Create a new table via TableSink
+
+`TableSink(conn, name)` is a write target for the sink protocol. Pipe any
+Tables.jl source into `Tables.materializer(TableSink(...))` to create a new
+table and get back the resulting `Table`:
+
+```julia
+# Works with any Tables.jl-compatible source — Arrow.Table, CSV.File, etc.
+# Below uses a named tuple to demonstrate without extra dependencies.
+new_tbl = (
+    id    = ["a", "b", "c"],
+    score = Float32[0.9f0, 0.6f0, 0.3f0],
+) |> Tables.materializer(TableSink(conn, "scores"))
+
+println(new_tbl isa Table)   # true
+println(count_rows(new_tbl)) # 3
+close(new_tbl)
+```
+
+With real streaming sources the pattern is identical:
+
+```julia
+# using CSV, Arrow
+# CSV.File("large.csv")     |> Tables.materializer(TableSink(conn, "from_csv"))
+# Arrow.Table("data.arrow") |> Tables.materializer(TableSink(conn, "from_arrow"))
+```
+
+---
+
+## 5. Full-table scan
 
 ```julia
 result = query(tbl) |> execute
@@ -127,7 +190,7 @@ CSV.jl, and any other ecosystem package:
 
 ---
 
-## 5. SQL string filters
+## 6. SQL string filters
 
 `filter_where` accepts a SQL WHERE predicate:
 
@@ -147,7 +210,7 @@ println(sort(collect(cols[:title])))
 
 ---
 
-## 6. Expression DSL filters
+## 7. Expression DSL filters
 
 Build filters programmatically with `col`, `lit`, and Julia operators.
 
@@ -210,7 +273,7 @@ e2   = copy(base) & (col("rating") < lit(7.5f0))
 
 ---
 
-## 7. Column projection, limit, and offset
+## 8. Column projection, limit, and offset
 
 ```julia
 # Select specific columns
@@ -247,7 +310,7 @@ cols = Tables.columns(
 
 ---
 
-## 8. Vector search (ANN)
+## 9. Vector search (ANN)
 
 ```julia
 query_vec = Float32[0.8, 0.2, 0.5, 0.1]   # similar to "Interstellar"
@@ -295,7 +358,7 @@ cols = Tables.columns(
 
 ---
 
-## 9. Indexes
+## 10. Indexes
 
 ### Vector index (IVFFlat)
 
@@ -372,7 +435,7 @@ optimize(tbl; type=OptimizeIndex)        # re-index delta rows
 
 ---
 
-## 10. Delete rows
+## 11. Delete rows
 
 ```julia
 println(count_rows(tbl))   # 7
@@ -386,7 +449,7 @@ println(table_version(tbl) > v_before)  # true — version bumped
 
 ---
 
-## 11. Upsert (merge_insert)
+## 12. Upsert (merge_insert)
 
 `merge_insert` updates rows that match on a key column and inserts rows that
 don't exist yet:
@@ -413,7 +476,7 @@ merge_insert(tbl, updates, ["id", "year"])
 
 ---
 
-## 12. Persistence
+## 13. Persistence
 
 Tables are stored on disk. Close a connection and everything survives:
 
@@ -439,7 +502,7 @@ close(conn2)
 
 ---
 
-## 13. Deterministic cleanup with do-blocks
+## 14. Deterministic cleanup with do-blocks
 
 ```julia
 open(Connection, "/tmp/my_lancedb") do conn
@@ -460,6 +523,8 @@ end  # conn.close() called automatically
 | Create from data | `tbl = create_table(conn, "name", data)` |
 | Create empty | `tbl = create_table(conn, "name", make_vector_schema("id","vec",128))` |
 | Add rows | `add(tbl, data)` |
+| Append via sink | `data \|> Tables.materializer(tbl)` |
+| Create via sink | `data \|> Tables.materializer(TableSink(conn, "name"))` |
 | Full scan | `query(tbl) \|> execute` |
 | SQL filter | `query(tbl) \|> filter_where("col > 5") \|> execute` |
 | DSL filter | `query(tbl) \|> filter_expr(col("x") > lit(5)) \|> execute` |

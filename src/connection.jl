@@ -114,6 +114,30 @@ function open_table(conn::Connection, name::AbstractString)::Table
 end
 
 """
+    TableSink(conn, name)
+
+A write target for the Tables.jl sink protocol. Pipe any Tables.jl-compatible
+source into `Tables.materializer(TableSink(conn, name))` to create a new table:
+
+```julia
+CSV.File("data.csv")  |> Tables.materializer(TableSink(conn, "mytable"))
+Arrow.Table(buf)      |> Tables.materializer(TableSink(conn, "embeddings"))
+```
+"""
+struct TableSink
+    conn::Connection
+    name::String
+end
+
+"""
+    Tables.materializer(sink::TableSink)
+
+Returns a function that creates a new table from any Tables.jl-compatible
+source and returns the resulting `Table`.
+"""
+Tables.materializer(sink::TableSink) = data -> create_table(sink.conn, sink.name, data)
+
+"""
     create_table(conn, name, schema; reader=C_NULL) -> Table
 
 Create a new table with the given Arrow C ABI schema pointer.
