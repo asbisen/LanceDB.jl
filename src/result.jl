@@ -24,6 +24,7 @@ end
 
 Tables.istable(::QueryResult)      = true
 Tables.columnaccess(::QueryResult) = true
+Tables.rowaccess(::QueryResult)    = true
 
 function Tables.columns(qr::QueryResult)
     isnothing(qr._columns) && _materialize!(qr)
@@ -36,6 +37,34 @@ function Tables.schema(qr::QueryResult)
     isempty(cols) && return Tables.Schema(Symbol[], Type[])
     Tables.Schema(collect(keys(cols)), collect(eltype(v) for v in values(cols)))
 end
+
+function Tables.rows(qr::QueryResult)
+    isnothing(qr._columns) && _materialize!(qr)
+    cols = qr._columns
+    n    = isempty(cols) ? 0 : length(first(values(cols)))
+    QueryResultRows(cols, n)
+end
+
+# ── Row iterator ──────────────────────────────────────────────────────────────
+
+struct QueryResultRow
+    _cols::NamedTuple
+    _idx::Int
+end
+
+Tables.columnnames(row::QueryResultRow)          = keys(row._cols)
+Tables.getcolumn(row::QueryResultRow, nm::Symbol) = row._cols[nm][row._idx]
+Tables.getcolumn(row::QueryResultRow, i::Int)     = row._cols[i][row._idx]
+
+struct QueryResultRows
+    _cols::NamedTuple
+    _len::Int
+end
+
+Base.length(rows::QueryResultRows)              = rows._len
+Base.eltype(::Type{QueryResultRows})            = QueryResultRow
+Base.iterate(rows::QueryResultRows, i::Int = 1) =
+    i > rows._len ? nothing : (QueryResultRow(rows._cols, i), i + 1)
 
 # ── Materialisation ───────────────────────────────────────────────────────────
 
