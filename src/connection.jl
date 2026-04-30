@@ -10,30 +10,37 @@ use the do-block form for deterministic cleanup.
 """
 mutable struct Connection
     handle::Ptr{LanceDBConnectionHandle}
+    _uri::String
+    _storage_options  # nothing or iterable of (key => value) pairs
+    _session          # nothing or a Session object
 
     function Connection(uri::AbstractString; storage_options=nothing, session=nothing)
-        builder = lancedb_connect(uri)
-        check_ptr(builder, "lancedb_connect returned NULL for uri: $uri")
-
-        if !isnothing(storage_options)
-            for (k, v) in storage_options
-                builder = lancedb_connect_builder_storage_option(builder, k, v)
-                check_ptr(builder, "lancedb_connect_builder_storage_option failed for key: $k")
-            end
-        end
-
-        if !isnothing(session)
-            builder = lancedb_connect_builder_session(builder, session.handle)
-            check_ptr(builder, "lancedb_connect_builder_session returned NULL")
-        end
-
-        handle = lancedb_connect_builder_execute(builder)
-        check_ptr(handle, "lancedb_connect_builder_execute returned NULL for uri: $uri")
-
-        conn = new(handle)
-        finalizer(c -> lancedb_connection_free(c.handle), conn)
+        handle = _build_handle(uri, storage_options, session)
+        conn   = new(handle, String(uri), storage_options, session)
+        finalizer(c -> c.handle != C_NULL && lancedb_connection_free(c.handle), conn)
         conn
     end
+end
+
+function _build_handle(uri, storage_options, session)
+    builder = lancedb_connect(uri)
+    check_ptr(builder, "lancedb_connect returned NULL for uri: $uri")
+
+    if !isnothing(storage_options)
+        for (k, v) in storage_options
+            builder = lancedb_connect_builder_storage_option(builder, k, v)
+            check_ptr(builder, "lancedb_connect_builder_storage_option failed for key: $k")
+        end
+    end
+
+    if !isnothing(session)
+        builder = lancedb_connect_builder_session(builder, session.handle)
+        check_ptr(builder, "lancedb_connect_builder_session returned NULL")
+    end
+
+    handle = lancedb_connect_builder_execute(builder)
+    check_ptr(handle, "lancedb_connect_builder_execute returned NULL for uri: $uri")
+    handle
 end
 
 """
@@ -72,15 +79,32 @@ function Base.close(conn::Connection)
 end
 
 """
+    isopen(conn::Connection) -> Bool
+
+Return `true` if the connection handle is live (not yet closed).
+"""
+Base.isopen(conn::Connection) = conn.handle != C_NULL
+
+"""
+    reopen!(conn::Connection) -> Connection
+
+Re-establish a connection that was previously closed with `close`. Uses the
+URI and options captured at construction time. Returns `conn` unchanged if it
+is already open.
+"""
+function reopen!(conn::Connection)
+    Base.isopen(conn) && return conn
+    conn.handle = _build_handle(conn._uri, conn._storage_options, conn._session)
+    conn
+end
+
+"""
     uri(conn) -> String
 
-Return the URI this connection points to.
+Return the URI this connection points to. Works even after the connection has
+been closed.
 """
-function uri(conn::Connection)::String
-    ptr = lancedb_connection_uri(conn.handle)
-    ptr == C_NULL && throw(LanceDBException(Int32(LANCEDB_RUNTIME), "lancedb_connection_uri returned NULL"))
-    unsafe_string(ptr)
-end
+uri(conn::Connection) = conn._uri
 
 """
     table_names(conn) -> Vector{String}

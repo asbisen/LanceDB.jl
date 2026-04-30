@@ -55,7 +55,7 @@ export Auto, BTree, Bitmap, LabelList, FTS, IVFFlat, IVFPQ, IVFHNSWpq, IVFHNSWsq
 export OptimizeAll, OptimizeCompact, OptimizePrune, OptimizeIndex
 
 # Connection operations
-export uri, table_names, open_table, create_table, drop_table
+export uri, table_names, open_table, create_table, drop_table, reopen!
 
 # Table operations
 export count_rows, table_version, delete_rows, add, merge_insert, optimize
